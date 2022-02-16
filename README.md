@@ -1,2 +1,5 @@
 # aws-msg
-pub/sub primitives implemented by aws-sdk-go-v2
+
+Package aws-msg implements pub/sub primitives outlined in package "github.com/zerofox-oss/go-msg".
+
+It's built on github.com/aws/aws-sdk-go-v2.
