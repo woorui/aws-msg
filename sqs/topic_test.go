@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
@@ -74,7 +75,9 @@ func newMockSender() *mockSender {
 func (s *mockSender) GetQueueUrl(
 	ctx context.Context,
 	params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error) {
-	return &sqs.GetQueueUrlOutput{}, nil
+	return &sqs.GetQueueUrlOutput{
+		QueueUrl: aws.String("http://mock.aws.sqs.com"),
+	}, nil
 }
 
 func (s *mockSender) SendMessage(

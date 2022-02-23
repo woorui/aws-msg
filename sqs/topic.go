@@ -3,6 +3,7 @@ package sqs
 import (
 	"bytes"
 	"context"
+	"io/ioutil"
 	"strings"
 	"sync"
 
@@ -51,46 +52,55 @@ func NewTopic(appCtx context.Context, queueName string, client TopicClient, op .
 
 // MessageWriter writes data to an AWS SQS Queue.
 type MessageWriter struct {
-	attributes msg.Attributes
-	buf        *bytes.Buffer
-	ctx        context.Context
-	closed     bool
-	mux        sync.Mutex
-	queueURL   *string     // the URL to the queue.
-	client     TopicClient // SQS client
-	input      func(body, queueUrl *string) *sqs.SendMessageInput
+	message  *msg.Message
+	ctx      context.Context
+	closed   bool
+	mux      sync.Mutex
+	queueURL *string     // the URL to the queue.
+	client   TopicClient // SQS client
+	input    func(body, queueUrl *string) *sqs.SendMessageInput
 }
 
 // NewWriter returns a MessageWriter.
 func (t *Topic) NewWriter(ctx context.Context) msg.MessageWriter {
-	return &MessageWriter{
-		buf:      &bytes.Buffer{},
+	w := &MessageWriter{
+		message:  &msg.Message{},
 		ctx:      ctx,
-		client:   t.client,
+		closed:   false,
+		mux:      sync.Mutex{},
 		queueURL: t.QueueURL,
+		client:   t.client,
 		input:    t.options.sqsSendMessageInput,
 	}
+	return w
 }
 
 // Attributes returns the msg.Attributes associated with the MessageWriter
 func (w *MessageWriter) Attributes() *msg.Attributes {
-	if w.attributes == nil {
-		w.attributes = make(map[string][]string)
+	if w.message.Attributes == nil {
+		w.message.Attributes = make(map[string][]string)
 	}
-	return &w.attributes
+	return &w.message.Attributes
 }
 
 // Write writes data to the MessageWriter's internal buffer.
 //
 // Once a MessageWriter is closed, it cannot be used again.
 func (w *MessageWriter) Write(p []byte) (int, error) {
+	var buf bytes.Buffer
 	w.mux.Lock()
 	defer w.mux.Unlock()
+
+	n, err := buf.Write(p)
+	if err != nil {
+		return 0, err
+	}
+	w.message.Body = &buf
 
 	if w.closed {
 		return 0, msg.ErrClosedMessageWriter
 	}
-	return w.buf.Write(p)
+	return n, err
 }
 
 // Close converts it's buffered data and attributes to an SQS message
@@ -106,7 +116,11 @@ func (w *MessageWriter) Close() error {
 	}
 	w.closed = true
 
-	params := w.input(aws.String(w.buf.String()), w.queueURL)
+	buf, err := ioutil.ReadAll(w.message.Body)
+	if err != nil {
+		return err
+	}
+	params := w.input(aws.String(string(buf)), w.queueURL)
 
 	attrs := *w.Attributes()
 	if len(attrs) > 0 {
@@ -118,7 +132,7 @@ func (w *MessageWriter) Close() error {
 		}
 	}
 
-	_, err := w.client.SendMessage(w.ctx, params)
+	_, err = w.client.SendMessage(w.ctx, params)
 	return err
 }
 
