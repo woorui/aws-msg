@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -21,13 +23,12 @@ type TopicClient interface {
 
 // Topic publishes Messages to an AWS SQS.
 type Topic struct {
-	options  *topicOption
 	QueueURL *string
 	client   TopicClient
 }
 
 // NewTopic returns an AWS SQS topic wrap
-func NewTopic(appCtx context.Context, queueName string, client TopicClient, op ...TopicOption) (msg.Topic, error) {
+func NewTopic(appCtx context.Context, queueName string, client TopicClient) (msg.Topic, error) {
 	urlOutput, err := client.GetQueueUrl(appCtx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(queueName),
 	})
@@ -36,15 +37,7 @@ func NewTopic(appCtx context.Context, queueName string, client TopicClient, op .
 		return nil, err
 	}
 
-	options := defaultTopicOptions()
-	for _, o := range op {
-		if err := o(options); err != nil {
-			return nil, err
-		}
-	}
-
 	return &Topic{
-		options:  options,
 		QueueURL: urlOutput.QueueUrl,
 		client:   client,
 	}, nil
@@ -58,7 +51,8 @@ type MessageWriter struct {
 	mux      sync.Mutex
 	queueURL *string     // the URL to the queue.
 	client   TopicClient // SQS client
-	input    func(body, queueUrl *string) *sqs.SendMessageInput
+	params   *sqs.SendMessageInput
+	optFns   []func(*sqs.Options)
 }
 
 // NewWriter returns a MessageWriter.
@@ -70,7 +64,7 @@ func (t *Topic) NewWriter(ctx context.Context) msg.MessageWriter {
 		mux:      sync.Mutex{},
 		queueURL: t.QueueURL,
 		client:   t.client,
-		input:    t.options.sqsSendMessageInput,
+		params:   &sqs.SendMessageInput{},
 	}
 	return w
 }
@@ -120,19 +114,20 @@ func (w *MessageWriter) Close() error {
 	if err != nil {
 		return err
 	}
-	params := w.input(aws.String(string(buf)), w.queueURL)
+
+	w.params.MessageBody = aws.String(string(buf))
 
 	attrs := *w.Attributes()
 	if len(attrs) > 0 {
-		if params.MessageAttributes == nil {
-			params.MessageAttributes = make(map[string]types.MessageAttributeValue, len(attrs))
+		if w.params.MessageAttributes == nil {
+			w.params.MessageAttributes = make(map[string]types.MessageAttributeValue, len(attrs))
 		}
 		for key, val := range buildSQSAttributes(w.Attributes()) {
-			params.MessageAttributes[key] = val
+			w.params.MessageAttributes[key] = val
 		}
 	}
 
-	_, err = w.client.SendMessage(w.ctx, params)
+	_, err = w.client.SendMessage(w.ctx, w.params, w.optFns...)
 	return err
 }
 
@@ -148,4 +143,15 @@ func buildSQSAttributes(attr *msg.Attributes) map[string]types.MessageAttributeV
 		}
 	}
 	return attrs
+}
+
+// SetDelay sets a delay on the Message.
+// The delay must be between 0 and 900 seconds, according to the aws sdk.
+func (w *MessageWriter) SetDelay(delay time.Duration) {
+	w.params.DelaySeconds = int32(math.Min(math.Max(delay.Seconds(), 0), 900))
+}
+
+// SetOptFns sets sqs SendMessage api optFns.
+func (w *MessageWriter) SetOptFns(optFns ...func(*sqs.Options)) {
+	w.optFns = optFns
 }

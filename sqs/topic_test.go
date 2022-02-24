@@ -42,12 +42,12 @@ func Test_Topic(t *testing.T) {
 			for _, r := range tt.args.strs {
 				userCtx := context.Background()
 
-				msg := topic.NewWriter(userCtx)
-				msg.Attributes().Set("a", "bbb")
-				if _, err = msg.Write([]byte(string(r))); err != nil {
+				w := topic.NewWriter(userCtx)
+				w.Attributes().Set("a", "bbb")
+				if _, err = w.Write([]byte(string(r))); err != nil {
 					t.Fatal(err)
 				}
-				if err := msg.Close(); err != nil {
+				if err := w.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}

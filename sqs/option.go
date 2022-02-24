@@ -109,38 +109,3 @@ func SQSReceiveMessageInput(fn func(queueUrl *string) *sqs.ReceiveMessageInput) 
 		return nil
 	}
 }
-
-type topicOption struct {
-	sqsSendMessageInput func(body, queueUrl *string) *sqs.SendMessageInput
-}
-
-func defaultTopicOptions() *topicOption {
-	return &topicOption{
-		sqsSendMessageInput: func(body, queueUrl *string) *sqs.SendMessageInput {
-			return &sqs.SendMessageInput{
-				MessageBody:  body,
-				QueueUrl:     queueUrl,
-				DelaySeconds: 0,
-			}
-		},
-	}
-}
-
-type TopicOption func(o *topicOption) error
-
-// SQSSendMessageInput allows people to customize *sqs.SendMessageInput.
-//
-// defaults is:
-//
-// func(body, queueUrl *string) *sqs.SendMessageInput {
-//	return &sqs.SendMessageInput{
-//		MessageBody:  body,
-//		QueueUrl:     queueUrl,
-//		DelaySeconds: 0,
-// 	}
-func SQSSendMessageInput(fn func(body, queueUrl *string) *sqs.SendMessageInput) TopicOption {
-	return func(o *topicOption) error {
-		o.sqsSendMessageInput = fn
-		return nil
-	}
-}
