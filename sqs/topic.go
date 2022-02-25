@@ -3,6 +3,7 @@ package sqs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io/ioutil"
 	"math"
 	"strings"
@@ -147,11 +148,21 @@ func buildSQSAttributes(attr *msg.Attributes) map[string]types.MessageAttributeV
 
 // SetDelay sets a delay on the Message.
 // The delay must be between 0 and 900 seconds, according to the aws sdk.
-func (w *MessageWriter) SetDelay(delay time.Duration) {
+func SetDelay(mw msg.MessageWriter, delay time.Duration) error {
+	w, ok := mw.(*MessageWriter)
+	if !ok {
+		return errors.New("aws-msg-sqs: Can't use SetDelay to current MessageWriter")
+	}
 	w.params.DelaySeconds = int32(math.Min(math.Max(delay.Seconds(), 0), 900))
+	return nil
 }
 
 // SetOptFns sets sqs SendMessage api optFns.
-func (w *MessageWriter) SetOptFns(optFns ...func(*sqs.Options)) {
+func SetOptFns(mw msg.MessageWriter, optFns ...func(*sqs.Options)) error {
+	w, ok := mw.(*MessageWriter)
+	if !ok {
+		return errors.New("aws-msg-sqs: Can't use SetOptFns to current MessageWriter")
+	}
 	w.optFns = optFns
+	return nil
 }

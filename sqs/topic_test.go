@@ -5,9 +5,11 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/smithy-go/middleware"
 )
 
 func Test_Topic(t *testing.T) {
@@ -43,6 +45,10 @@ func Test_Topic(t *testing.T) {
 				userCtx := context.Background()
 
 				w := topic.NewWriter(userCtx)
+
+				SetDelay(w, time.Second)
+				SetOptFns(w, sqs.WithAPIOptions(func(s *middleware.Stack) error { return nil }))
+
 				w.Attributes().Set("a", "bbb")
 				if _, err = w.Write([]byte(string(r))); err != nil {
 					t.Fatal(err)
