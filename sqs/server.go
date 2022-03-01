@@ -141,9 +141,11 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 		Attributes: convertToMsgAttrs(message.MessageAttributes),
 		Body:       bytes.NewBufferString(*message.Body),
 	}
-	messageId := message.MessageId
-	if messageId != nil {
-		msgMessage.Attributes.Set("MessageId", *messageId)
+	if message.MessageId != nil {
+		msgMessage.Attributes.Set("MessageId", *message.MessageId)
+	}
+	if message.ReceiptHandle != nil {
+		msgMessage.Attributes.Set("ReceiptHandle", *message.ReceiptHandle)
 	}
 	if err := srv.ReceiveFunc(ctx, msgMessage); err != nil {
 		if err = srv.handleErr(err); err != nil {
