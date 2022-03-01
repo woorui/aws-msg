@@ -29,7 +29,7 @@ type Server struct {
 	appCancelFunc              context.CancelFunc // CancelFunc to signal the server should stop requesting messages.
 	QueueURL                   *string
 	client                     ServerClient
-	ReceiveFunc                func(context.Context, *msg.Message) error // ref to r.Receive
+	ReceiveFunc                msg.ReceiverFunc
 	sqsReceiveMessageInputPool *sync.Pool
 	wg                         *sync.WaitGroup
 }
