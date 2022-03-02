@@ -17,11 +17,11 @@ import (
 
 func Test_Server(t *testing.T) {
 	type args struct {
-		chars           string
-		dispatchcost    time.Duration
-		counterBreaks   time.Duration
-		shutdownWaiting time.Duration
-		serverOptions   []ServerOption
+		chars              string
+		pullMessageDuraion time.Duration
+		msgReceiveDuration time.Duration
+		shutdownWaiting    time.Duration
+		serverOptions      []ServerOption
 	}
 	tests := []struct {
 		name string
@@ -31,24 +31,27 @@ func Test_Server(t *testing.T) {
 		{
 			name: "fast",
 			args: args{
-				chars:           "aaabbbbccddddeeffccccddaassaassw",
-				dispatchcost:    time.Millisecond,
-				counterBreaks:   time.Millisecond,
-				shutdownWaiting: time.Second,
+				chars:              "aaabbbbccddddeeffccccddaassaassw",
+				pullMessageDuraion: time.Millisecond,
+				msgReceiveDuration: time.Millisecond,
+				shutdownWaiting:    time.Second,
 			},
 			want: map[string]int{"a": 7, "b": 4, "c": 6, "d": 6, "e": 2, "f": 2, "s": 4, "w": 1},
 		},
 		{
 			name: "pull message slowly",
 			args: args{
-				chars:           "aabbccc",
-				dispatchcost:    time.Second,
-				counterBreaks:   time.Microsecond,
-				shutdownWaiting: time.Millisecond,
+				chars:              "aabbccc",
+				pullMessageDuraion: time.Second,
+				msgReceiveDuration: time.Microsecond,
+				shutdownWaiting:    time.Millisecond,
 				serverOptions: []ServerOption{
 					SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
 						return &sqs.ReceiveMessageInput{
 							QueueUrl: queueUrl, MaxNumberOfMessages: 1}
+					}),
+					ErrHandler(func(ctx context.Context, err error) error {
+						return nil
 					}),
 				},
 			},
@@ -57,10 +60,10 @@ func Test_Server(t *testing.T) {
 		{
 			name: "Receive message slowly",
 			args: args{
-				chars:           "aa",
-				dispatchcost:    time.Microsecond,
-				counterBreaks:   time.Second,
-				shutdownWaiting: time.Millisecond,
+				chars:              "aa",
+				pullMessageDuraion: time.Microsecond,
+				msgReceiveDuration: time.Second,
+				shutdownWaiting:    time.Millisecond,
 				serverOptions: []ServerOption{
 					MessageBacklogSize(100),
 					SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
@@ -74,20 +77,20 @@ func Test_Server(t *testing.T) {
 		{
 			name: "slow",
 			args: args{
-				chars:           "aabbccc",
-				dispatchcost:    time.Millisecond,
-				counterBreaks:   time.Millisecond,
-				shutdownWaiting: 5 * time.Millisecond,
+				chars:              "aabbccc",
+				pullMessageDuraion: time.Millisecond,
+				msgReceiveDuration: time.Millisecond,
+				shutdownWaiting:    5 * time.Millisecond,
 			},
 			want: map[string]int{"a": 2, "b": 2, "c": 3},
 		},
 		{
 			name: "test options",
 			args: args{
-				chars:           "aaabbbbccddddeeffccccddaassaassw",
-				dispatchcost:    time.Millisecond,
-				counterBreaks:   time.Millisecond,
-				shutdownWaiting: time.Second,
+				chars:              "aaabbbbccddddeeffccccddaassaassw",
+				pullMessageDuraion: time.Millisecond,
+				msgReceiveDuration: time.Millisecond,
+				shutdownWaiting:    time.Second,
 				serverOptions: []ServerOption{
 					SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
 						return &sqs.ReceiveMessageInput{
@@ -115,14 +118,14 @@ func Test_Server(t *testing.T) {
 
 			server, err := NewServer(
 				"hello",
-				newRuneDispatcher("world", tt.args.chars, tt.args.dispatchcost),
+				newRuneDispatcher("world", tt.args.chars, tt.args.pullMessageDuraion),
 				options...,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			counter := newRuneCounter(tt.args.counterBreaks)
+			counter := newRuneCounter(tt.args.msgReceiveDuration)
 
 			go func() {
 				if err := server.Serve(counter); err != nil {
