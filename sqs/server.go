@@ -1,4 +1,4 @@
-package sqs
+package sqsmsg
 
 import (
 	"bytes"
@@ -184,3 +184,9 @@ func convertToMsgAttrs(awsAttrs map[string]types.MessageAttributeValue) msg.Attr
 	}
 	return attr
 }
+
+// MessageId get sqs MessageId from msg.Message
+func MessageId(m *msg.Message) string { return m.Attributes.Get("MessageId") }
+
+// ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message
+func ReceiptHandle(m *msg.Message) string { return m.Attributes.Get("ReceiptHandle") }

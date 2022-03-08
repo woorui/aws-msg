@@ -1,4 +1,4 @@
-package sqs
+package sqsmsg
 
 import (
 	"context"
