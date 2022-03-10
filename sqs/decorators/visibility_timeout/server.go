@@ -15,11 +15,20 @@ import (
 const changeVisibilityTimeoutKey = "change_visibility_timeout_seconds"
 
 type VisibilityTimeout struct {
-	sqsClient *sqs.Client
+	sqsClient Client
+}
+
+// Client interface of sqs.Client
+type Client interface {
+	ChangeMessageVisibility(
+		ctx context.Context,
+		params *sqs.ChangeMessageVisibilityInput,
+		optFns ...func(*sqs.Options),
+	) (*sqs.ChangeMessageVisibilityOutput, error)
 }
 
 // New return an VisibilityTimeout Decorator
-func New(sqsClient *sqs.Client) *VisibilityTimeout { return &VisibilityTimeout{sqsClient: sqsClient} }
+func New(sqsClient Client) *VisibilityTimeout { return &VisibilityTimeout{sqsClient: sqsClient} }
 
 // Decorator decorates msg.Receiver with a timeout for change sqs message visibility.
 //
@@ -56,7 +65,7 @@ func (v *VisibilityTimeout) Decorator(next msg.Receiver) msg.Receiver {
 // (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
 func SetVisibilityTimeout(m *msg.Message, d time.Duration) error {
 	if d.Seconds() < 0 || d.Hours() > 12 {
-		return errors.New("about visibility timeout, the minimum is 0, seconds. the maximum is 12 hours")
+		return errors.New("aws-msg: visibility timeout, the minimum is 0, seconds. the maximum is 12 hours")
 	}
 	m.Attributes.Set(changeVisibilityTimeoutKey, strconv.Itoa(int(d.Seconds())))
 	return nil
