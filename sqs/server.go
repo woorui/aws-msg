@@ -77,8 +77,6 @@ func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.S
 func (srv *Server) Serve(r msg.Receiver) error {
 	srv.ReceiveFunc = r.Receive
 
-	userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
-
 	srv.wg = &sync.WaitGroup{}
 
 	// start work
@@ -86,12 +84,12 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		srv.pool <- struct{}{}
 	}
 	for {
+		userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
+		defer cancel()
 		select {
 		case err := <-srv.errch:
-			cancel()
 			return err
 		case <-srv.appCtx.Done():
-			cancel()
 			return srv.handleErr(srv.appCtx.Err())
 		case <-srv.pool:
 			go func() {
