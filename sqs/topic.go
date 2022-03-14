@@ -116,6 +116,7 @@ func (w *MessageWriter) Close() error {
 		return err
 	}
 
+	w.params.QueueUrl = w.queueURL
 	w.params.MessageBody = aws.String(string(buf))
 
 	attrs := *w.Attributes()
