@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -33,7 +32,7 @@ func (f *FileStorage) Receive(c context.Context, m *msg.Message) error {
 	return err
 }
 
-func Test_Example_Server(t *testing.T) {
+func Example() {
 	var (
 		region    = "cn-northwest-1"
 		key       = "QNWIOCMEROCVSL"
