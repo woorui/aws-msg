@@ -57,23 +57,23 @@ func Test_Server(t *testing.T) {
 			},
 			want: map[string]int{},
 		},
-		// {
-		// 	name: "Receive message slowly",
-		// 	args: args{
-		// 		chars:              "aa",
-		// 		pullMessageDuraion: time.Microsecond,
-		// 		msgReceiveDuration: time.Second,
-		// 		shutdownWaiting:    time.Millisecond,
-		// 		serverOptions: []ServerOption{
-		// 			MessageBacklogSize(100),
-		// 			SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
-		// 				return &sqs.ReceiveMessageInput{
-		// 					QueueUrl: queueUrl, MaxNumberOfMessages: 10}
-		// 			}),
-		// 		},
-		// 	},
-		// 	want: map[string]int{"a": 2},
-		// },
+		{
+			name: "Receive message slowly",
+			args: args{
+				chars:              "aa",
+				pullMessageDuraion: time.Microsecond,
+				msgReceiveDuration: time.Second,
+				shutdownWaiting:    time.Millisecond,
+				serverOptions: []ServerOption{
+					MessageBacklogSize(100),
+					SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
+						return &sqs.ReceiveMessageInput{
+							QueueUrl: queueUrl, MaxNumberOfMessages: 10}
+					}),
+				},
+			},
+			want: map[string]int{"a": 2},
+		},
 		{
 			name: "slow",
 			args: args{

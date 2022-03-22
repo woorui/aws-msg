@@ -189,10 +189,12 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 func (srv *Server) Shutdown(ctx context.Context) error {
 	srv.appCancelFunc()
 
-	srv.wg.Wait()
-	srv.errch <- msg.ErrServerClosed
+	fmt.Println("aws-sqs: pubsub server shutdown")
 
-	fmt.Println("aws-sqs: pubsub server shutdown", len(srv.messageCh))
+	if len(srv.messageCh) != 0 {
+		srv.wg.Wait()
+	}
+	srv.errch <- msg.ErrServerClosed
 
 	return nil
 }
