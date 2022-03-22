@@ -191,6 +191,7 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 
 	fmt.Println("aws-sqs: pubsub server shutdown")
 
+	// if message is not fully processed, wait here
 	if len(srv.messageCh) != 0 {
 		srv.wg.Wait()
 	}
