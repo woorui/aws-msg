@@ -3,7 +3,11 @@ package sqsmsg
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -11,11 +15,14 @@ import (
 	"github.com/zerofox-oss/go-msg"
 )
 
+const changeVisibilityTimeout = "changeVisibilityTimeout"
+
 // ServerClient holds some necessary methods of *sqs.Client for server
 type ServerClient interface {
 	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
 	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
 	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 }
 
 // Server represents a msg.Server for pulling messages and receiving messages
@@ -150,6 +157,20 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 			return err
 		}
 	}
+
+	ok, sec := getVisibilityTimeout(msgMessage)
+	if ok {
+		if _, err := srv.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
+			QueueUrl:          srv.QueueURL,
+			ReceiptHandle:     message.ReceiptHandle,
+			VisibilityTimeout: *aws.Int32(sec),
+		}); err != nil {
+			if err = srv.handleErr(err); err != nil {
+				return err
+			}
+		}
+	}
+
 	if _, err := srv.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      srv.QueueURL,
 		ReceiptHandle: message.ReceiptHandle,
@@ -171,6 +192,8 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 	srv.wg.Wait()
 	srv.errch <- msg.ErrServerClosed
 
+	fmt.Println("aws-sqs: pubsub server shutdown", len(srv.messageCh))
+
 	return nil
 }
 
@@ -188,3 +211,25 @@ func MessageId(m *msg.Message) string { return m.Attributes.Get("MessageId") }
 
 // ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message
 func ReceiptHandle(m *msg.Message) string { return m.Attributes.Get("ReceiptHandle") }
+
+// SetVisibilityTimeout.
+//
+// The default visibility timeout for a message is 30 seconds. The minimum is 0
+// seconds. The maximum is 12 hours. For more information, see Visibility Timeout
+// (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
+func SetVisibilityTimeout(message *msg.Message, d time.Duration) error {
+	if d.Seconds() < 0 || d.Hours() > 12 {
+		return errors.New("aws-msg: visibility timeout, the minimum is 0, seconds. the maximum is 12 hours")
+	}
+	message.Attributes.Set(changeVisibilityTimeout, strconv.Itoa(int(d.Seconds())))
+	return nil
+}
+
+func getVisibilityTimeout(message *msg.Message) (bool, int32) {
+	v := message.Attributes.Get(changeVisibilityTimeout)
+	if v == "" {
+		return false, 0
+	}
+	i, _ := strconv.Atoi(v)
+	return true, int32(i)
+}
