@@ -85,6 +85,8 @@ func (srv *Server) Serve(r msg.Receiver) error {
 	srv.ReceiveFunc = r.Receive
 
 	srv.wg = &sync.WaitGroup{}
+	// calling Add for calling shutdown
+	srv.wg.Add(1)
 
 	// start work
 	for i := 0; i < int(srv.options.poolSize); i++ {
@@ -191,10 +193,17 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 
 	fmt.Println("aws-sqs: pubsub server shutdown")
 
-	// if message is not fully processed, wait here
-	if len(srv.messageCh) != 0 {
-		srv.wg.Wait()
+	srv.wg.Done()
+	srv.wg.Wait()
+
+	n := len(srv.messageCh)
+
+	for i := 0; i < n; i++ {
+		if err := srv.handleMessage(ctx, <-srv.messageCh); err != nil {
+			return err
+		}
 	}
+
 	srv.errch <- msg.ErrServerClosed
 
 	return nil

@@ -13,32 +13,15 @@ import (
 	"github.com/zerofox-oss/go-msg"
 )
 
-type FileStorage struct {
-	f *os.File
-}
+var (
+	region    = "cn-northwest-1"
+	key       = "QNWIOCMEROCVSL"
+	secret    = "aswekdpa[veverjiwAmioeoqxkaij"
+	queueName = "the-queue-name"
+)
+var client *sqs.Client
 
-func NewFileStorage(path string) *FileStorage {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		panic(err)
-	}
-	return &FileStorage{f: f}
-}
-
-func (f *FileStorage) Receive(c context.Context, m *msg.Message) error {
-	contents, _ := ioutil.ReadAll(m.Body)
-	f.f.Write([]byte{'\n'})
-	_, err := f.f.Write(contents)
-	return err
-}
-
-func Example() {
-	var (
-		region    = "cn-northwest-1"
-		key       = "QNWIOCMEROCVSL"
-		secret    = "aswekdpa[veverjiwAmioeoqxkaij"
-		queueName = "the-queue-name"
-	)
+func init() {
 	cfg, err := config.LoadDefaultConfig(
 		context.TODO(),
 		config.WithRegion(region),
@@ -50,24 +33,58 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	client := sqs.NewFromConfig(cfg)
+	client = sqs.NewFromConfig(cfg)
+}
 
-	server, err := sqsmsg.NewServer(
-		queueName,
-		client,
-		sqsmsg.SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
-			return &sqs.ReceiveMessageInput{
-				QueueUrl:            queueUrl,
-				MaxNumberOfMessages: 1,
-				WaitTimeSeconds:     20,
-			}
-		}))
+func ExampleServer() {
+	server, err := sqsmsg.NewServer(queueName, client)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = server.Serve(NewFileStorage("./messages.log"))
+	err = server.Serve(dumpToPath("./messages.log"))
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func ExampleTopic() {
+	ctx := context.Background()
+
+	topic, err := sqsmsg.NewTopic(ctx, queueName, client)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	userCtx := context.Background()
+
+	w := topic.NewWriter(userCtx)
+
+	if _, err = w.Write([]byte("hello world")); err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// fileLog write sqs message to local file
+// fileLog implement msg.Receiver
+type fileLog struct {
+	f *os.File
+}
+
+func dumpToPath(path string) *fileLog {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	return &fileLog{f: f}
+}
+
+func (f *fileLog) Receive(c context.Context, m *msg.Message) error {
+	contents, _ := ioutil.ReadAll(m.Body)
+	f.f.Write([]byte{'\n'})
+	_, err := f.f.Write(contents)
+	return err
 }

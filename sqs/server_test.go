@@ -5,6 +5,7 @@ import (
 	"io"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,9 +25,10 @@ func Test_Server(t *testing.T) {
 		serverOptions      []ServerOption
 	}
 	tests := []struct {
-		name string
-		args args
-		want map[string]int
+		name   string
+		args   args
+		want   map[string]int
+		equals bool
 	}{
 		{
 			name: "fast",
@@ -36,7 +38,8 @@ func Test_Server(t *testing.T) {
 				msgReceiveDuration: time.Millisecond,
 				shutdownWaiting:    time.Second,
 			},
-			want: map[string]int{"a": 7, "b": 4, "c": 6, "d": 6, "e": 2, "f": 2, "s": 4, "w": 1},
+			want:   map[string]int{"a": 7, "b": 4, "c": 6, "d": 6, "e": 2, "f": 2, "s": 4, "w": 1},
+			equals: true,
 		},
 		{
 			name: "pull message slowly",
@@ -55,7 +58,8 @@ func Test_Server(t *testing.T) {
 					}),
 				},
 			},
-			want: map[string]int{},
+			want:   map[string]int{},
+			equals: true,
 		},
 		{
 			name: "Receive message slowly",
@@ -72,7 +76,8 @@ func Test_Server(t *testing.T) {
 					}),
 				},
 			},
-			want: map[string]int{"a": 2},
+			want:   map[string]int{"a": 2},
+			equals: true,
 		},
 		{
 			name: "slow",
@@ -82,7 +87,19 @@ func Test_Server(t *testing.T) {
 				msgReceiveDuration: time.Millisecond,
 				shutdownWaiting:    5 * time.Millisecond,
 			},
-			want: map[string]int{"a": 2, "b": 2, "c": 3},
+			want:   map[string]int{"a": 2, "b": 2, "c": 3},
+			equals: true,
+		},
+		{
+			name: "large data",
+			args: args{
+				chars:              strings.Repeat("ab", 8120),
+				pullMessageDuraion: time.Microsecond,
+				msgReceiveDuration: time.Microsecond,
+				shutdownWaiting:    300 * time.Microsecond,
+			},
+			want:   map[string]int{},
+			equals: false,
 		},
 		{
 			name: "test options",
@@ -99,7 +116,8 @@ func Test_Server(t *testing.T) {
 					}),
 				},
 			},
-			want: map[string]int{"a": 7, "b": 4, "c": 6, "d": 6, "e": 2, "f": 2, "s": 4, "w": 1},
+			want:   map[string]int{"a": 7, "b": 4, "c": 6, "d": 6, "e": 2, "f": 2, "s": 4, "w": 1},
+			equals: true,
 		},
 	}
 
@@ -139,7 +157,7 @@ func Test_Server(t *testing.T) {
 
 			result := counter.result()
 
-			if !reflect.DeepEqual(result, tt.want) {
+			if tt.equals && !reflect.DeepEqual(result, tt.want) {
 				t.Errorf("counter result = %v, want %v", result, tt.want)
 			}
 		})
