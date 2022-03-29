@@ -136,14 +136,14 @@ func Test_Server(t *testing.T) {
 
 			server, err := NewServer(
 				"hello",
-				newRuneDispatcher("world", tt.args.chars, tt.args.pullMessageDuraion),
+				newMockSQSClient("world", tt.args.chars, tt.args.pullMessageDuraion),
 				options...,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			counter := newRuneCounter(tt.args.msgReceiveDuration)
+			counter := newMockReceiver(tt.args.msgReceiveDuration)
 
 			go func() {
 				if err := server.Serve(counter); err != nil {
@@ -164,7 +164,7 @@ func Test_Server(t *testing.T) {
 	}
 }
 
-type runeDispatcher struct {
+type mockSQSClient struct {
 	fakeQueueUrl string
 	chars        string
 	charch       chan types.Message
@@ -173,10 +173,12 @@ type runeDispatcher struct {
 	mu           *sync.Mutex
 }
 
-// newRuneDispatch dispatch the item of chars
-// `cost` is time cost for calling d.ReceiveMessage
-// `fakeQueueUrl` == d.GetQueueUrl().QueueUrl
-func newRuneDispatcher(fakeQueueUrl string, chars string, cost time.Duration) *runeDispatcher {
+// newMockSQSClient stores a chars and returns a specified number of
+// item when calling the method until all of them are returned
+//
+// `receiveCost` is time cost for calling d.ReceiveMessage
+// `fakeQueueUrl` will equals d.GetQueueUrl().QueueUrl
+func newMockSQSClient(fakeQueueUrl string, chars string, receiveCost time.Duration) *mockSQSClient {
 	charch := make(chan types.Message, len(chars))
 	deletedChar := make([]struct{}, len(chars))
 	for i, r := range chars {
@@ -184,29 +186,26 @@ func newRuneDispatcher(fakeQueueUrl string, chars string, cost time.Duration) *r
 			MessageId: aws.String(strconv.Itoa(i)),
 			MessageAttributes: map[string]types.MessageAttributeValue{
 				"from": {
-					DataType:         aws.String("String"),
-					BinaryListValues: [][]byte{},
-					BinaryValue:      []byte{},
-					StringListValues: []string{},
-					StringValue:      aws.String("rune dispatch"),
+					DataType:    aws.String("String"),
+					StringValue: aws.String("mock_sqs_client"),
 				},
 			},
 			Body:          aws.String(string(r)),
 			ReceiptHandle: aws.String(strconv.Itoa(i)),
 		}
 	}
-	return &runeDispatcher{
+	return &mockSQSClient{
 		fakeQueueUrl: fakeQueueUrl,
 		chars:        chars,
 		charch:       charch,
-		ticker:       time.NewTicker(cost),
+		ticker:       time.NewTicker(receiveCost),
 		deletedIndex: deletedChar,
 		mu:           &sync.Mutex{},
 	}
 }
 
-// GetQueueUrl get runeDispatch.title
-func (d *runeDispatcher) GetQueueUrl(
+// GetQueueUrl get QueueUrl
+func (d *mockSQSClient) GetQueueUrl(
 	ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (
 	*sqs.GetQueueUrlOutput, error) {
 	return &sqs.GetQueueUrlOutput{
@@ -214,8 +213,8 @@ func (d *runeDispatcher) GetQueueUrl(
 	}, nil
 }
 
-// ReceiveMessage get rune
-func (d *runeDispatcher) ReceiveMessage(
+// ReceiveMessage get `MaxNumberOfMessages` count item of chars
+func (d *mockSQSClient) ReceiveMessage(
 	ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (
 	*sqs.ReceiveMessageOutput, error) {
 	var messages []types.Message
@@ -236,13 +235,11 @@ func (d *runeDispatcher) ReceiveMessage(
 		return &sqs.ReceiveMessageOutput{}, nil
 	}
 
-	return &sqs.ReceiveMessageOutput{
-		Messages: messages,
-	}, nil
+	return &sqs.ReceiveMessageOutput{Messages: messages}, nil
 }
 
 // DeleteMessage records index deleted
-func (c *runeDispatcher) DeleteMessage(
+func (c *mockSQSClient) DeleteMessage(
 	ctx context.Context,
 	params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (
 	*sqs.DeleteMessageOutput, error) {
@@ -262,31 +259,31 @@ func (c *runeDispatcher) DeleteMessage(
 	return &sqs.DeleteMessageOutput{}, nil
 }
 
-// DeleteMessage records index deleted
-func (c *runeDispatcher) ChangeMessageVisibility(
+// ChangeMessageVisibility only returns an success.
+func (c *mockSQSClient) ChangeMessageVisibility(
 	ctx context.Context,
 	params *sqs.ChangeMessageVisibilityInput,
 	optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error) {
 	return &sqs.ChangeMessageVisibilityOutput{}, nil
 }
 
-type runeCounter struct {
-	breaks time.Duration
-	in     map[string]int
-	mu     *sync.Mutex
+type mockReceiver struct {
+	mockTimeExecuted time.Duration
+	in               map[string]int
+	mu               *sync.Mutex
 }
 
-// newRuneCounter return *runeCounter
-// runeCounter counter the number rune appeared from chars
-func newRuneCounter(breaks time.Duration) *runeCounter {
-	return &runeCounter{
-		breaks: breaks,
-		in:     make(map[string]int),
-		mu:     &sync.Mutex{},
+// newMockReceiver return  a mock receiver
+// mockReceiver counts the number of item from calling mockSQSClient.ReceiveMessage()
+func newMockReceiver(mockTimeExecuted time.Duration) *mockReceiver {
+	return &mockReceiver{
+		mockTimeExecuted: mockTimeExecuted,
+		in:               make(map[string]int),
+		mu:               &sync.Mutex{},
 	}
 }
 
-func (c *runeCounter) Receive(ctx context.Context, message *msg.Message) error {
+func (c *mockReceiver) Receive(ctx context.Context, message *msg.Message) error {
 	b, err := io.ReadAll(message.Body)
 	if err != nil {
 		return err
@@ -309,7 +306,7 @@ func (c *runeCounter) Receive(ctx context.Context, message *msg.Message) error {
 	}
 	c.mu.Unlock()
 
-	time.Sleep(c.breaks)
+	time.Sleep(c.mockTimeExecuted)
 
 	MessageId(message)
 	ReceiptHandle(message)
@@ -317,7 +314,8 @@ func (c *runeCounter) Receive(ctx context.Context, message *msg.Message) error {
 	return nil
 }
 
-func (c *runeCounter) result() map[string]int {
+// result make test result easy
+func (c *mockReceiver) result() map[string]int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	result := make(map[string]int)
