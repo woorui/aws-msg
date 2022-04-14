@@ -18,6 +18,13 @@ It's built on top of "github.com/aws/aws-sdk-go-v2".
 3. Support graceful shutdown.
 
 4. Backpressure for handling SQS message.
+
+## Install 
+
+```
+go get github.com/woorui/aws-msg
+```
+
 ## Examples
 
 ```go
