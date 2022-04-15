@@ -57,12 +57,6 @@ func Test_Server(t *testing.T) {
 					ErrHandler(func(ctx context.Context, err error) error {
 						return nil
 					}),
-					Decorators(func(rf msg.ReceiverFunc) msg.ReceiverFunc {
-						return func(ctx context.Context, m *msg.Message) error {
-							fmt.Println("decorator here")
-							return rf(ctx, m)
-						}
-					}),
 				},
 			},
 			want:   map[string]int{},
@@ -120,6 +114,11 @@ func Test_Server(t *testing.T) {
 						return &sqs.ReceiveMessageInput{
 							QueueUrl:            queueUrl,
 							MaxNumberOfMessages: 8}
+					}),
+					Decorators(func(rf msg.ReceiverFunc) msg.ReceiverFunc {
+						return func(ctx context.Context, m *msg.Message) error {
+							return rf(ctx, m)
+						}
 					}),
 				},
 			},
@@ -297,10 +296,6 @@ func (c *mockReceiver) Receive(ctx context.Context, message *msg.Message) error 
 	}
 	str := string(b)
 
-	if err := SetVisibilityTimeout(message, 100*time.Second); err != nil {
-		return err
-	}
-
 	c.mu.Lock()
 	{
 		val, ok := c.in[str]
@@ -315,9 +310,9 @@ func (c *mockReceiver) Receive(ctx context.Context, message *msg.Message) error 
 
 	time.Sleep(c.mockTimeExecuted)
 
-	MessageId(message)
-	ReceiptHandle(message)
-
+	if len(c.result()) > 3 {
+		return VisibilityTimeout(12 * time.Second)
+	}
 	return nil
 }
 

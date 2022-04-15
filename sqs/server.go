@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -164,21 +163,18 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 		msgMessage.Attributes.Set("ReceiptHandle", *message.ReceiptHandle)
 	}
 	if err := srv.ReceiveFunc(ctx, msgMessage); err != nil {
-		if err = srv.handleErr(err); err != nil {
-			return err
-		}
-	}
-
-	ok, sec := getVisibilityTimeout(msgMessage)
-	if ok {
-		if _, err := srv.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
-			QueueUrl:          srv.QueueURL,
-			ReceiptHandle:     message.ReceiptHandle,
-			VisibilityTimeout: *aws.Int32(sec),
-		}); err != nil {
-			if err = srv.handleErr(err); err != nil {
-				return err
+		if se := new(visibilityTimeout); errors.As(err, se) {
+			if _, err := srv.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
+				QueueUrl:          srv.QueueURL,
+				ReceiptHandle:     message.ReceiptHandle,
+				VisibilityTimeout: int32(se.duration.Seconds()),
+			}); err != nil {
+				if err = srv.handleErr(err); err != nil {
+					return err
+				}
 			}
+		} else if err = srv.handleErr(err); err != nil {
+			return err
 		}
 	}
 
@@ -227,30 +223,23 @@ func convertToMsgAttrs(awsAttrs map[string]types.MessageAttributeValue) msg.Attr
 	return attr
 }
 
-// MessageId get sqs MessageId from msg.Message
-func MessageId(m *msg.Message) string { return m.Attributes.Get("MessageId") }
-
-// ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message
-func ReceiptHandle(m *msg.Message) string { return m.Attributes.Get("ReceiptHandle") }
-
-// SetVisibilityTimeout.
+// VisibilityTimeout.
 //
 // The default visibility timeout for a message is 30 seconds. The minimum is 0
 // seconds. The maximum is 12 hours. For more information, see Visibility Timeout
 // (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
-func SetVisibilityTimeout(message *msg.Message, d time.Duration) error {
+func VisibilityTimeout(d time.Duration) error {
 	if d.Seconds() < 0 || d.Hours() > 12 {
 		return errors.New("aws-msg: visibility timeout, the minimum is 0, seconds. the maximum is 12 hours")
 	}
-	message.Attributes.Set(changeVisibilityTimeout, strconv.Itoa(int(d.Seconds())))
-	return nil
+	return visibilityTimeout{duration: d}
 }
 
-func getVisibilityTimeout(message *msg.Message) (bool, int32) {
-	v := message.Attributes.Get(changeVisibilityTimeout)
-	if v == "" {
-		return false, 0
-	}
-	i, _ := strconv.Atoi(v)
-	return true, int32(i)
+// visibilityTimeout
+type visibilityTimeout struct {
+	duration time.Duration
+}
+
+func (e visibilityTimeout) Error() string {
+	return fmt.Sprintf("Is changing visibility timeout: duration = %s", e.duration)
 }
