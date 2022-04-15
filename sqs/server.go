@@ -110,7 +110,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 			return srv.handleErr(srv.appCtx.Err())
 		case <-srv.pool:
 			go func() {
-				srv.receiveMessage(userCtx)
+				srv.receiveMessage(srv.appCtx)
 				srv.pool <- struct{}{}
 			}()
 		case message := <-srv.messageCh:
@@ -131,13 +131,17 @@ func (srv *Server) receiveMessage(ctx context.Context) error {
 	}()
 	resp, err := srv.client.ReceiveMessage(ctx, input)
 	if err != nil {
-		if err = srv.handleErr(err); err != nil {
-			return err
+		if ctx.Err() == nil {
+			if err = srv.handleErr(err); err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, message := range resp.Messages {
+			srv.messageCh <- message
 		}
 	}
-	for _, message := range resp.Messages {
-		srv.messageCh <- message
-	}
+
 	return nil
 }
 
