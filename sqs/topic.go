@@ -147,6 +147,9 @@ func buildSQSAttributes(attr *msg.Attributes) map[string]types.MessageAttributeV
 	return attrs
 }
 
+// MessageId get sqs MessageId from Message
+func MessageId(w *msg.Message) string { return w.Attributes.Get("MessageId") }
+
 // SetDelay sets a delay on the Message.
 // The delay must be between 0 and 900 seconds, according to the aws sdk.
 func SetDelay(mw msg.MessageWriter, delay time.Duration) error {

@@ -243,3 +243,6 @@ type visibilityTimeout struct {
 func (e visibilityTimeout) Error() string {
 	return fmt.Sprintf("Is changing visibility timeout: duration = %s", e.duration)
 }
+
+// ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message
+func ReceiptHandle(m *msg.Message) string { return m.Attributes.Get("ReceiptHandle") }

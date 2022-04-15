@@ -308,6 +308,9 @@ func (c *mockReceiver) Receive(ctx context.Context, message *msg.Message) error 
 	}
 	c.mu.Unlock()
 
+	MessageId(message)
+	ReceiptHandle(message)
+
 	time.Sleep(c.mockTimeExecuted)
 
 	if len(c.result()) > 3 {
