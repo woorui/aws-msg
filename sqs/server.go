@@ -198,6 +198,10 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 
 	fmt.Println("aws-sqs: pubsub server shutdown")
 
+	if srv.wg == nil {
+		return nil
+	}
+
 	srv.wg.Done()
 	srv.wg.Wait()
 
