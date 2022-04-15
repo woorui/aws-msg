@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/zerofox-oss/go-msg"
 )
 
 var (
@@ -20,24 +21,19 @@ type serverOption struct {
 	timeout                time.Duration
 	poolSize               uint32
 	messageBacklogSize     uint32
+	decorators             []func(msg.ReceiverFunc) msg.ReceiverFunc
 	errHandler             func(ctx context.Context, err error) error
 	sqsReceiveMessageInput func(queueUrl *string) *sqs.ReceiveMessageInput
 }
 
 func defaultServerOptions() *serverOption {
 	return &serverOption{
-		ctx:                context.Background(),
-		timeout:            defaultTimeout,
-		poolSize:           defaultPoolSize,
-		messageBacklogSize: defaultPoolSize * 10,
-		sqsReceiveMessageInput: func(queueUrl *string) *sqs.ReceiveMessageInput {
-			return &sqs.ReceiveMessageInput{
-				QueueUrl:              queueUrl,
-				AttributeNames:        []types.QueueAttributeName{types.QueueAttributeNameAll},
-				MaxNumberOfMessages:   10,
-				MessageAttributeNames: []string{string(types.QueueAttributeNameAll)},
-				WaitTimeSeconds:       20}
-		},
+		ctx:                    context.Background(),
+		timeout:                defaultTimeout,
+		poolSize:               defaultPoolSize,
+		messageBacklogSize:     defaultPoolSize * 10,
+		decorators:             []func(msg.ReceiverFunc) msg.ReceiverFunc{},
+		sqsReceiveMessageInput: defalutReceiveMessageInput,
 		errHandler: func(ctx context.Context, err error) error {
 			if err != nil {
 				fmt.Printf("aws-msg-sqs: %+v \n", err)
@@ -61,6 +57,14 @@ func PoolSize(size uint32) ServerOption {
 func MessageBacklogSize(size uint32) ServerOption {
 	return func(o *serverOption) error {
 		o.messageBacklogSize = size
+		return nil
+	}
+}
+
+// Decorators add Decorators for Receiver.Receive
+func Decorators(ds ...func(msg.ReceiverFunc) msg.ReceiverFunc) ServerOption {
+	return func(o *serverOption) error {
+		o.decorators = ds
 		return nil
 	}
 }
@@ -108,4 +112,13 @@ func SQSReceiveMessageInput(fn func(queueUrl *string) *sqs.ReceiveMessageInput) 
 		o.sqsReceiveMessageInput = fn
 		return nil
 	}
+}
+
+func defalutReceiveMessageInput(queueUrl *string) *sqs.ReceiveMessageInput {
+	return &sqs.ReceiveMessageInput{
+		QueueUrl:              queueUrl,
+		AttributeNames:        []types.QueueAttributeName{types.QueueAttributeNameAll},
+		MaxNumberOfMessages:   10,
+		MessageAttributeNames: []string{string(types.QueueAttributeNameAll)},
+		WaitTimeSeconds:       20}
 }

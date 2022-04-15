@@ -51,9 +51,9 @@ func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.S
 			return nil, err
 		}
 	}
-	serverCtx, appCancelFunc := context.WithCancel(options.ctx)
+	appCtx, appCancelFunc := context.WithCancel(options.ctx)
 
-	urlOutput, err := client.GetQueueUrl(serverCtx, &sqs.GetQueueUrlInput{
+	urlOutput, err := client.GetQueueUrl(appCtx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(queueName),
 	})
 	if err != nil {
@@ -61,18 +61,20 @@ func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.S
 		return nil, err
 	}
 
+	sqsReceiveMessageInputPool := &sync.Pool{New: func() interface{} {
+		return options.sqsReceiveMessageInput(urlOutput.QueueUrl)
+	}}
+
 	srv := &Server{
-		options:       options,
-		errch:         make(chan error, 1),
-		pool:          make(chan struct{}, options.poolSize),
-		messageCh:     make(chan types.Message, options.messageBacklogSize),
-		appCtx:        serverCtx,
-		appCancelFunc: appCancelFunc,
-		QueueURL:      urlOutput.QueueUrl,
-		client:        client,
-		sqsReceiveMessageInputPool: &sync.Pool{New: func() interface{} {
-			return options.sqsReceiveMessageInput(urlOutput.QueueUrl)
-		}},
+		options:                    options,
+		errch:                      make(chan error, 1),
+		pool:                       make(chan struct{}, options.poolSize),
+		messageCh:                  make(chan types.Message, options.messageBacklogSize),
+		appCtx:                     appCtx,
+		appCancelFunc:              appCancelFunc,
+		QueueURL:                   urlOutput.QueueUrl,
+		client:                     client,
+		sqsReceiveMessageInputPool: sqsReceiveMessageInputPool,
 	}
 
 	return srv, nil
@@ -82,7 +84,14 @@ func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.S
 //
 // Serve is blocking and will not return until Shutdown is called or unknown error happened on the Server.
 func (srv *Server) Serve(r msg.Receiver) error {
-	srv.ReceiveFunc = r.Receive
+	srv.ReceiveFunc = msg.ReceiverFunc(func(ctx context.Context, m *msg.Message) error {
+		next := r.Receive
+		ds := srv.options.decorators
+		for i := len(srv.options.decorators) - 1; i >= 0; i-- {
+			next = ds[i](next)
+		}
+		return next(ctx, m)
+	})
 
 	srv.wg = &sync.WaitGroup{}
 	// calling Add for calling shutdown

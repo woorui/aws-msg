@@ -2,6 +2,7 @@ package sqsmsg
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"reflect"
 	"strconv"
@@ -55,6 +56,12 @@ func Test_Server(t *testing.T) {
 					}),
 					ErrHandler(func(ctx context.Context, err error) error {
 						return nil
+					}),
+					Decorators(func(rf msg.ReceiverFunc) msg.ReceiverFunc {
+						return func(ctx context.Context, m *msg.Message) error {
+							fmt.Println("decorator here")
+							return rf(ctx, m)
+						}
 					}),
 				},
 			},
@@ -147,7 +154,7 @@ func Test_Server(t *testing.T) {
 
 			go func() {
 				if err := server.Serve(counter); err != nil {
-					t.Logf("server.Serve() return %+v", err)
+					fmt.Printf("server.Serve() return %+v \n", err)
 				}
 			}()
 
