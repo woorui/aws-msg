@@ -246,3 +246,6 @@ func (e visibilityTimeout) Error() string {
 
 // ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message
 func ReceiptHandle(m *msg.Message) string { return m.Attributes.Get("ReceiptHandle") }
+
+// MessageId get sqs MessageId from Message
+func MessageId(w *msg.Message) string { return w.Attributes.Get("MessageId") }

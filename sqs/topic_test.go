@@ -56,6 +56,8 @@ func Test_Topic(t *testing.T) {
 				if err := w.Close(); err != nil {
 					t.Fatal(err)
 				}
+
+				TopicMessageId(w)
 			}
 
 			result := client.result()
