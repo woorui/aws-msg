@@ -57,7 +57,9 @@ func Test_Topic(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				TopicMessageId(w)
+				if TopicMessageId(w) != "asd" {
+					t.Fatal("topic message id return error")
+				}
 			}
 
 			result := client.result()
@@ -106,7 +108,7 @@ func (s *mockSender) SendMessage(
 	}
 	s.mu.Unlock()
 
-	return &sqs.SendMessageOutput{}, nil
+	return &sqs.SendMessageOutput{MessageId: aws.String("asd")}, nil
 }
 
 func (s *mockSender) result() map[string]int {

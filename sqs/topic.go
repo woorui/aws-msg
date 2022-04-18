@@ -129,7 +129,10 @@ func (w *MessageWriter) Close() error {
 		}
 	}
 
-	_, err = w.client.SendMessage(w.ctx, w.params, w.optFns...)
+	output, err := w.client.SendMessage(w.ctx, w.params, w.optFns...)
+
+	w.Attributes().Set("MessageId", *output.MessageId)
+
 	return err
 }
 
