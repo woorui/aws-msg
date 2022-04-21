@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -38,6 +39,7 @@ type Server struct {
 	ReceiveFunc                msg.ReceiverFunc
 	sqsReceiveMessageInputPool *sync.Pool
 	wg                         *sync.WaitGroup
+	closed                     uint32
 }
 
 // NewServer return a handling AWS SQS server
@@ -111,7 +113,9 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		case <-srv.pool:
 			go func() {
 				srv.receiveMessage(srv.appCtx)
-				srv.pool <- struct{}{}
+				if !srv.Closed() {
+					srv.pool <- struct{}{}
+				}
 			}()
 		case message := <-srv.messageCh:
 			srv.wg.Add(1)
@@ -136,7 +140,7 @@ func (srv *Server) receiveMessage(ctx context.Context) error {
 				return err
 			}
 		}
-	} else {
+	} else if !srv.Closed() {
 		for _, message := range resp.Messages {
 			srv.messageCh <- message
 		}
@@ -200,6 +204,8 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 func (srv *Server) Shutdown(ctx context.Context) error {
 	srv.appCancelFunc()
 
+	atomic.AddUint32(&srv.closed, 1)
+
 	fmt.Println("aws-sqs: pubsub server shutdown")
 
 	if srv.wg == nil {
@@ -219,8 +225,14 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 
 	srv.errch <- msg.ErrServerClosed
 
+	close(srv.pool)
+	close(srv.messageCh)
+
 	return nil
 }
+
+// Closed return if server is closed
+func (srv *Server) Closed() bool { return atomic.LoadUint32(&srv.closed) == 1 }
 
 // convertToMsgAttrs creates msg.Attributes from sqs.Message.Attributes.
 func convertToMsgAttrs(awsAttrs map[string]types.MessageAttributeValue) msg.Attributes {
