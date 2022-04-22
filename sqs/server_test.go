@@ -160,6 +160,7 @@ func Test_Server(t *testing.T) {
 			time.Sleep(tt.args.shutdownWaiting)
 
 			server.Shutdown(appCtx)
+			server.Shutdown(appCtx)
 
 			result := counter.result()
 

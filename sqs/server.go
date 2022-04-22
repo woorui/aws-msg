@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -38,6 +39,7 @@ type Server struct {
 	ReceiveFunc                msg.ReceiverFunc
 	sqsReceiveMessageInputPool *sync.Pool
 	wg                         *sync.WaitGroup
+	closed                     int32
 }
 
 // NewServer return a handling AWS SQS server
@@ -106,13 +108,16 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		select {
 		case err := <-srv.errch:
 			return err
-		case <-srv.appCtx.Done():
-			return srv.handleErr(srv.appCtx.Err())
 		case <-srv.pool:
-			go func() {
-				srv.receiveMessage(srv.appCtx)
-				srv.pool <- struct{}{}
-			}()
+			select {
+			case <-srv.appCtx.Done():
+				return srv.handleErr(srv.appCtx.Err())
+			default:
+				go func() {
+					srv.receiveMessage(srv.appCtx)
+					srv.pool <- struct{}{}
+				}()
+			}
 		case message := <-srv.messageCh:
 			srv.wg.Add(1)
 			go func() {
@@ -198,6 +203,11 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 // Shutdown will handle rest AWS SQS message after calling Shutdown
 // until all AWS SQS  have been handled.
 func (srv *Server) Shutdown(ctx context.Context) error {
+	if atomic.LoadInt32(&srv.closed) >= 1 {
+		return msg.ErrServerClosed
+	}
+	atomic.AddInt32(&srv.closed, 1)
+
 	srv.appCancelFunc()
 
 	fmt.Println("aws-sqs: pubsub server shutdown")
