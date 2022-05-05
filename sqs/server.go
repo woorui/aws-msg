@@ -203,6 +203,11 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 // Shutdown will handle rest AWS SQS message after calling Shutdown
 // until all AWS SQS  have been handled.
 func (srv *Server) Shutdown(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	if atomic.LoadInt32(&srv.closed) >= 1 {
 		return msg.ErrServerClosed
 	}
