@@ -12,15 +12,15 @@ import (
 )
 
 var (
-	defaultTimeout  = 5 * time.Second
-	defaultPoolSize = uint32(runtime.NumCPU() * 3)
+	defaultTimeout = 5 * time.Second
+	defaultPolling = uint32(runtime.NumCPU() * 3)
 )
 
 type serverOption struct {
 	ctx                    context.Context
 	timeout                time.Duration
+	polling                uint32
 	poolSize               uint32
-	messageBacklogSize     uint32
 	decorators             []func(msg.ReceiverFunc) msg.ReceiverFunc
 	errHandler             func(ctx context.Context, err error) error
 	sqsReceiveMessageInput func(queueUrl *string) *sqs.ReceiveMessageInput
@@ -30,8 +30,8 @@ func defaultServerOptions() *serverOption {
 	return &serverOption{
 		ctx:                    context.Background(),
 		timeout:                defaultTimeout,
-		poolSize:               defaultPoolSize,
-		messageBacklogSize:     defaultPoolSize * 10,
+		polling:                defaultPolling,
+		poolSize:               defaultPolling * 10,
 		decorators:             []func(msg.ReceiverFunc) msg.ReceiverFunc{},
 		sqsReceiveMessageInput: defalutReceiveMessageInput,
 		errHandler: func(ctx context.Context, err error) error {
@@ -45,7 +45,8 @@ func defaultServerOptions() *serverOption {
 
 type ServerOption func(o *serverOption) error
 
-// PoolSize controls the maximum number of aws message receive routines allowed
+// PoolSize controls the maximum number of aws message handle-routine,
+// one goroutinue handle one aws message.
 func PoolSize(size uint32) ServerOption {
 	return func(o *serverOption) error {
 		o.poolSize = size
@@ -53,10 +54,10 @@ func PoolSize(size uint32) ServerOption {
 	}
 }
 
-// MessageBacklogSize change message backlog size
-func MessageBacklogSize(size uint32) ServerOption {
+// Polling controls the number of aws message receive-routine,
+func Polling(size uint32) ServerOption {
 	return func(o *serverOption) error {
-		o.messageBacklogSize = size
+		o.polling = size
 		return nil
 	}
 }

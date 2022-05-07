@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -28,18 +27,12 @@ type ServerClient interface {
 // Server represents a msg.Server for pulling messages and receiving messages
 // from an AWS SQS Queue.
 type Server struct {
-	options                    *serverOption
-	errch                      chan error
-	pool                       chan struct{}      // The maximum number of aws message receive routines allowed.
-	messageCh                  chan types.Message // buffered sqs message channel.
-	appCtx                     context.Context    // context used to control the lifecycle of the Server.
-	appCancelFunc              context.CancelFunc // CancelFunc to signal the server should stop requesting messages.
-	QueueURL                   *string
-	client                     ServerClient
-	ReceiveFunc                msg.ReceiverFunc
-	sqsReceiveMessageInputPool *sync.Pool
-	wg                         *sync.WaitGroup
-	closed                     int32
+	options       *serverOption
+	appCtx        context.Context    // context used to control the lifecycle of the Server.
+	appCancelFunc context.CancelFunc // CancelFunc to signal the server should stop requesting messages.
+	QueueURL      *string
+	client        ServerClient
+	ReceiveFunc   msg.ReceiverFunc
 }
 
 // NewServer return a handling AWS SQS server
@@ -62,20 +55,12 @@ func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.S
 		return nil, err
 	}
 
-	sqsReceiveMessageInputPool := &sync.Pool{New: func() interface{} {
-		return options.sqsReceiveMessageInput(urlOutput.QueueUrl)
-	}}
-
 	srv := &Server{
-		options:                    options,
-		errch:                      make(chan error, 1),
-		pool:                       make(chan struct{}, options.poolSize),
-		messageCh:                  make(chan types.Message, options.messageBacklogSize),
-		appCtx:                     appCtx,
-		appCancelFunc:              appCancelFunc,
-		QueueURL:                   urlOutput.QueueUrl,
-		client:                     client,
-		sqsReceiveMessageInputPool: sqsReceiveMessageInputPool,
+		options:       options,
+		appCtx:        appCtx,
+		appCancelFunc: appCancelFunc,
+		QueueURL:      urlOutput.QueueUrl,
+		client:        client,
 	}
 
 	return srv, nil
@@ -94,73 +79,81 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		return next(ctx, m)
 	})
 
-	srv.wg = &sync.WaitGroup{}
-	// calling Add for calling shutdown
-	srv.wg.Add(1)
+	var wg sync.WaitGroup
 
-	// start work
-	for i := 0; i < int(srv.options.poolSize); i++ {
-		srv.pool <- struct{}{}
-	}
+	messagech, errch := srv.parallelPolling(&wg, int(srv.options.polling))
+
+	var gerr error
+
 	for {
-		userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
-		defer cancel()
 		select {
-		case err := <-srv.errch:
-			return err
-		case <-srv.pool:
-			select {
-			case <-srv.appCtx.Done():
-				return srv.handleErr(srv.appCtx.Err())
-			default:
-				go func() {
-					srv.receiveMessage(srv.appCtx)
-					srv.pool <- struct{}{}
-				}()
+		case <-srv.appCtx.Done():
+			goto waiting
+		case err := <-errch:
+			if se := srv.options.errHandler(srv.appCtx, err); se != nil {
+				gerr = se
+				goto waiting
 			}
-		case message := <-srv.messageCh:
-			srv.wg.Add(1)
+		case message := <-messagech:
+			wg.Add(1)
 			go func() {
-				defer srv.wg.Done()
-				srv.handleMessage(userCtx, message)
+				userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
+				defer cancel()
+				srv.handleMessage(userCtx, message, errch)
+				wg.Done()
 			}()
 		}
 	}
+
+waiting:
+	wg.Wait()
+	close(messagech)
+	close(errch)
+
+	return gerr
 }
 
-// receiveMessage uses sqs.Client.ReceiveMessage to pull messages form an AWS SQS Queue
-func (srv *Server) receiveMessage(ctx context.Context) error {
-	input := srv.sqsReceiveMessageInputPool.Get().(*sqs.ReceiveMessageInput)
-	defer func() {
-		srv.sqsReceiveMessageInputPool.Put(input)
-	}()
-	resp, err := srv.client.ReceiveMessage(ctx, input)
-	if err != nil {
-		if ctx.Err() == nil {
-			if err = srv.handleErr(err); err != nil {
-				return err
+// parallelPolling calls polling using specified number of goroutinue.
+func (srv *Server) parallelPolling(wg *sync.WaitGroup, num int) (chan types.Message, chan error) {
+	var (
+		ctx       = srv.appCtx
+		messagech = make(chan types.Message, srv.options.poolSize)
+		errch     = make(chan error)
+	)
+	wg.Add(num)
+	for i := 0; i < num; i++ {
+		go srv.polling(wg, ctx, messagech, errch)
+	}
+
+	return messagech, errch
+}
+
+// polling calls sqs.Client.ReceiveMessage to pull messages form an AWS SQS Queue
+func (srv *Server) polling(wg *sync.WaitGroup, ctx context.Context, messagech chan types.Message, errch chan error) {
+	for {
+		select {
+		case <-ctx.Done():
+			wg.Done()
+			return
+		default:
+			resp, err := srv.client.ReceiveMessage(
+				ctx,
+				srv.options.sqsReceiveMessageInput(srv.QueueURL),
+			)
+			if err != nil {
+				errch <- err
+				continue
+			}
+			for _, message := range resp.Messages {
+				messagech <- message
 			}
 		}
-	} else {
-		for _, message := range resp.Messages {
-			srv.messageCh <- message
-		}
 	}
-
-	return nil
-}
-
-func (srv *Server) handleErr(err error) error {
-	err = srv.options.errHandler(srv.appCtx, err)
-	if err != nil {
-		srv.errch <- err
-	}
-	return err
 }
 
 // handleMessage handle a message, includes calling r.Receive and deleting message
 // after receive message success.
-func (srv *Server) handleMessage(ctx context.Context, message types.Message) error {
+func (srv *Server) handleMessage(ctx context.Context, message types.Message, errch chan error) {
 	msgMessage := &msg.Message{
 		Attributes: convertToMsgAttrs(message.MessageAttributes),
 		Body:       bytes.NewBufferString(*message.Body),
@@ -178,12 +171,12 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 				ReceiptHandle:     message.ReceiptHandle,
 				VisibilityTimeout: int32(se.duration.Seconds()),
 			}); err != nil {
-				if err = srv.handleErr(err); err != nil {
-					return err
-				}
+				errch <- err
+				return
 			}
-		} else if err = srv.handleErr(err); err != nil {
-			return err
+		} else {
+			errch <- err
+			return
 		}
 	}
 
@@ -191,11 +184,9 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 		QueueUrl:      srv.QueueURL,
 		ReceiptHandle: message.ReceiptHandle,
 	}); err != nil {
-		if err = srv.handleErr(err); err != nil {
-			return err
-		}
+		errch <- err
+		return
 	}
-	return nil
 }
 
 // Shutdown shutdown the SQS server
@@ -206,33 +197,14 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-srv.appCtx.Done():
+		return msg.ErrServerClosed
 	default:
 	}
-	if atomic.LoadInt32(&srv.closed) >= 1 {
-		return msg.ErrServerClosed
-	}
-	atomic.AddInt32(&srv.closed, 1)
 
 	srv.appCancelFunc()
 
 	fmt.Println("aws-sqs: pubsub server shutdown")
-
-	if srv.wg == nil {
-		return nil
-	}
-
-	srv.wg.Done()
-	srv.wg.Wait()
-
-	n := len(srv.messageCh)
-
-	for i := 0; i < n; i++ {
-		if err := srv.handleMessage(ctx, <-srv.messageCh); err != nil {
-			return err
-		}
-	}
-
-	srv.errch <- msg.ErrServerClosed
 
 	return nil
 }

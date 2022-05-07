@@ -70,7 +70,7 @@ func Test_Server(t *testing.T) {
 				msgReceiveDuration: time.Second,
 				shutdownWaiting:    time.Millisecond,
 				serverOptions: []ServerOption{
-					MessageBacklogSize(100),
+					PoolSize(100),
 					SQSReceiveMessageInput(func(queueUrl *string) *sqs.ReceiveMessageInput {
 						return &sqs.ReceiveMessageInput{
 							QueueUrl: queueUrl, MaxNumberOfMessages: 10}
@@ -133,8 +133,8 @@ func Test_Server(t *testing.T) {
 
 			options := []ServerOption{
 				Context(appCtx),
-				PoolSize(1),
-				MessageBacklogSize(3),
+				Polling(1),
+				PoolSize(3),
 				Timeout(3 * time.Second),
 			}
 
