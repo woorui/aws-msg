@@ -133,24 +133,22 @@ func (srv *Server) parallelPolling(wg *sync.WaitGroup, num int) (chan types.Mess
 // polling calls sqs.Client.ReceiveMessage to pull messages form an AWS SQS Queue
 func (srv *Server) polling(wg *sync.WaitGroup, ctx context.Context, messagech chan types.Message, errch chan error) {
 	for {
-		select {
-		case <-ctx.Done():
-			wg.Done()
-			return
-		default:
-			resp, err := srv.client.ReceiveMessage(
-				ctx,
-				srv.options.sqsReceiveMessageInput(srv.QueueURL),
-			)
-			if err != nil {
-				errch <- err
-				continue
+		resp, err := srv.client.ReceiveMessage(
+			ctx,
+			srv.options.sqsReceiveMessageInput(srv.QueueURL),
+		)
+		if err != nil {
+			if ctx.Err() != nil {
+				break
 			}
-			for _, message := range resp.Messages {
-				messagech <- message
-			}
+			errch <- err
+			continue
+		}
+		for _, message := range resp.Messages {
+			messagech <- message
 		}
 	}
+	wg.Done()
 }
 
 // handleMessage handle a message, includes calling r.Receive and deleting message
