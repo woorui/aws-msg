@@ -99,7 +99,9 @@ func (srv *Server) Serve(r msg.Receiver) error {
 			go func() {
 				userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
 				defer cancel()
-				srv.handleMessage(userCtx, message, errch)
+				if err := srv.handleMessage(userCtx, message); err != nil {
+					errch <- err
+				}
 				wg.Done()
 			}()
 		}
@@ -153,7 +155,7 @@ func (srv *Server) polling(wg *sync.WaitGroup, ctx context.Context, messagech ch
 
 // handleMessage handle a message, includes calling r.Receive and deleting message
 // after receive message success.
-func (srv *Server) handleMessage(ctx context.Context, message types.Message, errch chan error) {
+func (srv *Server) handleMessage(ctx context.Context, message types.Message) error {
 	msgMessage := &msg.Message{
 		Attributes: convertToMsgAttrs(message.MessageAttributes),
 		Body:       bytes.NewBufferString(*message.Body),
@@ -171,12 +173,10 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message, err
 				ReceiptHandle:     message.ReceiptHandle,
 				VisibilityTimeout: int32(se.duration.Seconds()),
 			}); err != nil {
-				errch <- err
-				return
+				return err
 			}
 		} else {
-			errch <- err
-			return
+			return err
 		}
 	}
 
@@ -184,9 +184,10 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message, err
 		QueueUrl:      srv.QueueURL,
 		ReceiptHandle: message.ReceiptHandle,
 	}); err != nil {
-		errch <- err
-		return
+		return err
 	}
+
+	return nil
 }
 
 // Shutdown shutdown the SQS server
