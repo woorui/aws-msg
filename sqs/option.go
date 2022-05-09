@@ -12,14 +12,14 @@ import (
 )
 
 var (
-	defaultTimeout = 5 * time.Second
-	defaultPolling = uint32(runtime.NumCPU() * 3)
+	defaultTimeout   = 5 * time.Second
+	defaultRetriever = uint32(runtime.NumCPU() * 3)
 )
 
 type serverOption struct {
 	ctx                    context.Context
 	timeout                time.Duration
-	polling                uint32
+	retriever              uint32
 	poolSize               uint32
 	decorators             []func(msg.ReceiverFunc) msg.ReceiverFunc
 	errHandler             func(ctx context.Context, err error) error
@@ -30,8 +30,8 @@ func defaultServerOptions() *serverOption {
 	return &serverOption{
 		ctx:                    context.Background(),
 		timeout:                defaultTimeout,
-		polling:                defaultPolling,
-		poolSize:               defaultPolling * 10,
+		retriever:              defaultRetriever,
+		poolSize:               defaultRetriever * 10,
 		decorators:             []func(msg.ReceiverFunc) msg.ReceiverFunc{},
 		sqsReceiveMessageInput: defalutReceiveMessageInput,
 		errHandler: func(ctx context.Context, err error) error {
@@ -54,10 +54,10 @@ func PoolSize(size uint32) ServerOption {
 	}
 }
 
-// Polling controls the number of aws message receive-routine,
-func Polling(size uint32) ServerOption {
+// Retriever controls the number of aws message receive-routine,
+func Retriever(num uint32) ServerOption {
 	return func(o *serverOption) error {
-		o.polling = size
+		o.retriever = num
 		return nil
 	}
 }

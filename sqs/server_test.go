@@ -133,7 +133,7 @@ func Test_Server(t *testing.T) {
 
 			options := []ServerOption{
 				Context(appCtx),
-				Polling(1),
+				Retriever(1),
 				PoolSize(3),
 				Timeout(3 * time.Second),
 			}

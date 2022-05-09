@@ -24,7 +24,7 @@ type ServerClient interface {
 	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 }
 
-// Server represents a msg.Server for pulling messages and receiving messages
+// Server represents a msg.Server for retrieving messages and receiving messages
 // from an AWS SQS Queue.
 type Server struct {
 	options       *serverOption
@@ -81,7 +81,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 
 	var wg sync.WaitGroup
 
-	messagech, errch := srv.parallelPolling(&wg, int(srv.options.polling))
+	messagech, errch := srv.Polling(&wg, srv.options.retriever)
 
 	var gerr error
 
@@ -115,23 +115,24 @@ waiting:
 	return gerr
 }
 
-// parallelPolling calls polling using specified number of goroutinue.
-func (srv *Server) parallelPolling(wg *sync.WaitGroup, num int) (chan types.Message, chan error) {
+// Polling calls retrieve using specified number of goroutinue.
+func (srv *Server) Polling(wg *sync.WaitGroup, n uint32) (chan types.Message, chan error) {
 	var (
 		ctx       = srv.appCtx
 		messagech = make(chan types.Message, srv.options.poolSize)
 		errch     = make(chan error)
+		num       = int(n)
 	)
 	wg.Add(num)
 	for i := 0; i < num; i++ {
-		go srv.polling(wg, ctx, messagech, errch)
+		go srv.retrieve(wg, ctx, messagech, errch)
 	}
 
 	return messagech, errch
 }
 
-// polling calls sqs.Client.ReceiveMessage to pull messages form an AWS SQS Queue
-func (srv *Server) polling(wg *sync.WaitGroup, ctx context.Context, messagech chan types.Message, errch chan error) {
+// retrieve calls sqs.Client.ReceiveMessage to retrieve messages form an AWS SQS Queue
+func (srv *Server) retrieve(wg *sync.WaitGroup, ctx context.Context, messagech chan types.Message, errch chan error) {
 	for {
 		resp, err := srv.client.ReceiveMessage(
 			ctx,
