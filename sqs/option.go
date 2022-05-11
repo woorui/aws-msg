@@ -70,7 +70,8 @@ func Decorators(ds ...func(msg.ReceiverFunc) msg.ReceiverFunc) ServerOption {
 	}
 }
 
-// ErrHandler handle server error, includes aws errors and receive errors
+// ErrHandler handle server error, includes aws errors and receive errors,
+// There means an unexpected error If ErrHandler returns not nil error, the server will shutdown.
 func ErrHandler(handler func(ctx context.Context, err error) error) ServerOption {
 	return func(o *serverOption) error {
 		o.errHandler = handler
