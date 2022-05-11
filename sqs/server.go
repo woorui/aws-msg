@@ -97,7 +97,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		case message := <-messagech:
 			wg.Add(1)
 			go func() {
-				userCtx, cancel := context.WithTimeout(srv.options.ctx, srv.options.timeout)
+				userCtx, cancel := context.WithTimeout(srv.appCtx, srv.options.timeout)
 				defer cancel()
 				if err := srv.handleMessage(userCtx, message); err != nil {
 					errch <- err
