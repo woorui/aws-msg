@@ -169,7 +169,7 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 		msgMessage.Attributes.Set("ReceiptHandle", *message.ReceiptHandle)
 	}
 	if err := srv.ReceiveFunc(ctx, msgMessage); err != nil {
-		if se := new(visibilityTimeout); errors.As(err, se) {
+		if se := new(visibilityTimeout); errors.As(err, &se) {
 			if _, err := srv.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
 				QueueUrl:          srv.QueueURL,
 				ReceiptHandle:     message.ReceiptHandle,
@@ -230,7 +230,7 @@ func VisibilityTimeout(d time.Duration) error {
 	if d.Seconds() < 0 || d.Hours() > 12 {
 		return errors.New("aws-msg: visibility timeout, the minimum is 0, seconds. the maximum is 12 hours")
 	}
-	return visibilityTimeout{duration: d}
+	return &visibilityTimeout{duration: d}
 }
 
 // visibilityTimeout
@@ -238,7 +238,7 @@ type visibilityTimeout struct {
 	duration time.Duration
 }
 
-func (e visibilityTimeout) Error() string {
+func (e *visibilityTimeout) Error() string {
 	return fmt.Sprintf("Is changing visibility timeout: duration = %s", e.duration)
 }
 
