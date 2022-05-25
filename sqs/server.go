@@ -98,12 +98,9 @@ func (srv *Server) Serve(r msg.Receiver) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				userCtx, cancel := context.WithTimeout(srv.appCtx, srv.options.timeout)
+				userCtx, cancel := context.WithTimeout(context.Background(), srv.options.timeout)
 				defer cancel()
 				if err := srv.handleMessage(userCtx, message); err != nil {
-					if srv.appCtx != nil {
-						return
-					}
 					errch <- err
 				}
 			}()
@@ -123,7 +120,7 @@ func (srv *Server) Polling(wg *sync.WaitGroup, n uint32) (chan types.Message, ch
 	var (
 		ctx       = srv.appCtx
 		messagech = make(chan types.Message, srv.options.poolSize)
-		errch     = make(chan error)
+		errch     = make(chan error, 128)
 		num       = int(n)
 	)
 	wg.Add(num)
