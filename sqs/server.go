@@ -92,13 +92,14 @@ func (srv *Server) Serve(r msg.Receiver) error {
 		case err := <-errch:
 			if se := srv.options.errHandler(srv.appCtx, err); se != nil {
 				gerr = se
+				srv.appCancelFunc()
 				goto waiting
 			}
 		case message := <-messagech:
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				userCtx, cancel := context.WithTimeout(context.Background(), srv.options.timeout)
+				userCtx, cancel := context.WithTimeout(srv.appCtx, srv.options.timeout)
 				defer cancel()
 				if err := srv.handleMessage(userCtx, message); err != nil {
 					errch <- err
@@ -111,6 +112,10 @@ waiting:
 	wg.Wait()
 	close(messagech)
 	close(errch)
+
+	for err := range errch {
+		srv.options.errHandler(srv.appCtx, err)
+	}
 
 	return gerr
 }
