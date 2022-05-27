@@ -235,13 +235,24 @@ func VisibilityTimeout(d time.Duration) error {
 	return &visibilityTimeout{duration: d}
 }
 
+// IsVisibilityTimeout return if the err is VisibilityTimeout type error.
+func IsVisibilityTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	if se := new(visibilityTimeout); errors.As(err, &se) {
+		return true
+	}
+	return false
+}
+
 // visibilityTimeout
 type visibilityTimeout struct {
 	duration time.Duration
 }
 
 func (e *visibilityTimeout) Error() string {
-	return fmt.Sprintf("Is changing visibility timeout: duration = %s", e.duration)
+	return fmt.Sprintf("change visibility timeout: duration = %s", e.duration)
 }
 
 // ReceiptHandle get sqs ReceiptHandle for handling sqs.message from msg.Message

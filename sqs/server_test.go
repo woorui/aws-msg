@@ -2,6 +2,7 @@ package sqsmsg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -329,4 +330,44 @@ func (c *mockReceiver) result() map[string]int {
 		result[k] = v
 	}
 	return result
+}
+
+func TestIsVisibilityTimeout(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "yes",
+			args: args{
+				err: VisibilityTimeout(5 * time.Second),
+			},
+			want: true,
+		},
+		{
+			name: "no",
+			args: args{
+				err: errors.New("some err"),
+			},
+			want: false,
+		},
+		{
+			name: "nil_no",
+			args: args{
+				err: nil,
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsVisibilityTimeout(tt.args.err); got != tt.want {
+				t.Errorf("IsVisibilityTimeout() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
