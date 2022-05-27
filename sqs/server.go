@@ -182,6 +182,7 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 		} else {
 			return err
 		}
+		return nil
 	}
 
 	if _, err := srv.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
