@@ -109,14 +109,19 @@ func (srv *Server) Serve(r msg.Receiver) error {
 	}
 
 waiting:
+	done := make(chan struct{}, 1)
+	go func() {
+		for err := range errch {
+			srv.options.errHandler(srv.appCtx, err)
+		}
+		done <- struct{}{}
+	}()
+
 	wg.Wait()
 	close(messagech)
 	close(errch)
 
-	for err := range errch {
-		srv.options.errHandler(srv.appCtx, err)
-	}
-
+	<-done
 	return gerr
 }
 
@@ -179,6 +184,7 @@ func (srv *Server) handleMessage(ctx context.Context, message types.Message) err
 			}); err != nil {
 				return err
 			}
+			return nil
 		} else {
 			return err
 		}
