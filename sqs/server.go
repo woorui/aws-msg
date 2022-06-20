@@ -85,6 +85,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 
 	var gerr error
 
+	worker := make(chan struct{}, srv.options.poolSize)
 	for {
 		select {
 		case <-srv.appCtx.Done():
@@ -96,6 +97,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 				goto waiting
 			}
 		case message := <-messagech:
+			worker <- struct{}{}
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -104,6 +106,7 @@ func (srv *Server) Serve(r msg.Receiver) error {
 				if err := srv.handleMessage(userCtx, message); err != nil {
 					errch <- err
 				}
+				<-worker
 			}()
 		}
 	}
@@ -118,6 +121,7 @@ waiting:
 	}()
 
 	wg.Wait()
+	close(worker)
 	close(messagech)
 	close(errch)
 
@@ -129,8 +133,8 @@ waiting:
 func (srv *Server) Polling(wg *sync.WaitGroup, n uint32) (chan types.Message, chan error) {
 	var (
 		ctx       = srv.appCtx
-		messagech = make(chan types.Message, srv.options.poolSize)
-		errch     = make(chan error, 128)
+		messagech = make(chan types.Message, srv.options.retriever*10)
+		errch     = make(chan error, srv.options.poolSize)
 		num       = int(n)
 	)
 	wg.Add(num)
