@@ -41,9 +41,7 @@ type Server struct {
 func NewServer(queueName string, client ServerClient, op ...ServerOption) (msg.Server, error) {
 	options := defaultServerOptions()
 	for _, o := range op {
-		if err := o(options); err != nil {
-			return nil, err
-		}
+		o(options)
 	}
 	appCtx, appCancelFunc := context.WithCancel(options.ctx)
 

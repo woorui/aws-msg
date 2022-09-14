@@ -43,39 +43,35 @@ func defaultServerOptions() *serverOption {
 	}
 }
 
-type ServerOption func(o *serverOption) error
+type ServerOption func(o *serverOption)
 
 // PoolSize controls the maximum number of aws message handle-routine,
 // one goroutinue handle one aws message.
 func PoolSize(size uint32) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.poolSize = size
-		return nil
 	}
 }
 
 // Retriever controls the number of aws message receive-routine,
 func Retriever(num uint32) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.retriever = num
-		return nil
 	}
 }
 
 // Decorators add Decorators for Receiver.Receive
 func Decorators(ds ...func(msg.ReceiverFunc) msg.ReceiverFunc) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.decorators = ds
-		return nil
 	}
 }
 
 // ErrHandler handle server error, includes aws errors and receive errors,
 // There means an unexpected error If ErrHandler returns not nil error, the server will shutdown.
 func ErrHandler(handler func(ctx context.Context, err error) error) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.errHandler = handler
-		return nil
 	}
 }
 
@@ -83,17 +79,15 @@ func ErrHandler(handler func(ctx context.Context, err error) error) ServerOption
 
 // TODO: merge userCtx and appCtx
 func Context(ctx context.Context) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.ctx = ctx
-		return nil
 	}
 }
 
 // Timeout controls timeout for receiving message
 func Timeout(timeout time.Duration) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.timeout = timeout
-		return nil
 	}
 }
 
@@ -110,9 +104,8 @@ func Timeout(timeout time.Duration) ServerOption {
 // 		WaitTimeSeconds:       20}
 // }
 func SQSReceiveMessageInput(fn func(queueUrl *string) *sqs.ReceiveMessageInput) ServerOption {
-	return func(o *serverOption) error {
+	return func(o *serverOption) {
 		o.sqsReceiveMessageInput = fn
-		return nil
 	}
 }
 
